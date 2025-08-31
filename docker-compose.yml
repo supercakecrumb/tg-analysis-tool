@@ -1,0 +1,124 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tg_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: tg_analysis
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/postgres:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tg_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - tg-network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8-alpine
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: tg_analytics
+      CLICKHOUSE_USER: tg_user
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./migrations/clickhouse:/docker-entrypoint-initdb.d
+    ports:
+      - "127.0.0.1:8123:8123"  # HTTP interface (local only)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - tg-network
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    networks:
+      - tg-network
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    image: ghcr.io/${GITHUB_REPOSITORY:-yourusername/tg-analysis-tool}:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      clickhouse:
+        condition: service_started
+      redis:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://tg_user:${POSTGRES_PASSWORD}@postgres:5432/tg_analysis?sslmode=disable
+      CLICKHOUSE_URL: clickhouse://tg_user:${CLICKHOUSE_PASSWORD}@clickhouse:9000/tg_analytics
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
+      SESSION_ENC_KEY: ${SESSION_ENC_KEY}
+      COOKIE_SECRET: ${COOKIE_SECRET}
+      TELEGRAM_API_ID: ${TELEGRAM_API_ID}
+      TELEGRAM_API_HASH: ${TELEGRAM_API_HASH}
+      BASE_URL: ${BASE_URL}
+      TIMEZONE: ${TIMEZONE}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      ENABLE_METRICS: ${ENABLE_METRICS:-false}
+      ENABLE_PPROF: ${ENABLE_PPROF:-false}
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./data:/app/data  # For file uploads/exports
+    networks:
+      - tg-network
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+    image: ghcr.io/${GITHUB_REPOSITORY:-yourusername/tg-analysis-tool}-web:${VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NEXT_PUBLIC_API_URL: ${BASE_URL}/api
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - tg-network
+
+  # Migration runner (one-shot container)
+  migrate:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.api
+    command: ["/app/migrate", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://tg_user:${POSTGRES_PASSWORD}@postgres:5432/tg_analysis?sslmode=disable
+    volumes:
+      - ./migrations/postgres:/app/migrations/postgres
+    networks:
+      - tg-network
+    profiles:
+      - tools
+
+volumes:
+  postgres_data:
+  clickhouse_data:
+  redis_data:
+
+networks:
+  tg-network:
+    driver: bridge

@@ -1,19 +1,21 @@
 package api
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/go-chi/httprate"
-	"github.com/rs/zerolog/log"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/api/handlers"
+	apiMiddleware "github.com/supercakecrumb/tg-analysis-tool/internal/api/middleware"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/api/middleware/auth"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/config"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/infrastructure/postgres"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/infrastructure/redis"
+	"github.com/supercakecrumb/tg-analysis-tool/internal/services/telegram"
 )
 
 // Server represents the HTTP server
@@ -45,23 +47,28 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // setupMiddleware configures all middleware
+// NewLogFormatter creates a log formatter that works with slog
+func NewLogFormatter(logger *slog.Logger) *chiMiddleware.DefaultLogFormatter {
+	return &chiMiddleware.DefaultLogFormatter{
+		Logger: &apiMiddleware.SlogAdapter{Logger: logger},
+	}
+}
+
 func (s *Server) setupMiddleware() {
 	// Request ID
-	s.router.Use(middleware.RequestID)
+	s.router.Use(chiMiddleware.RequestID)
 
 	// Real IP
-	s.router.Use(middleware.RealIP)
+	s.router.Use(chiMiddleware.RealIP)
 
 	// Logger
-	s.router.Use(middleware.RequestLogger(&middleware.DefaultLogFormatter{
-		Logger: &log.Logger,
-	}))
+	s.router.Use(chiMiddleware.RequestLogger(NewLogFormatter(slog.Default())))
 
 	// Recoverer
-	s.router.Use(middleware.Recoverer)
+	s.router.Use(chiMiddleware.Recoverer)
 
 	// Timeout
-	s.router.Use(middleware.Timeout(60 * time.Second))
+	s.router.Use(chiMiddleware.Timeout(60 * time.Second))
 
 	// CORS
 	s.router.Use(cors.Handler(cors.Options{
@@ -77,13 +84,19 @@ func (s *Server) setupMiddleware() {
 	s.router.Use(httprate.LimitByIP(100, 1*time.Minute))
 
 	// Compression
-	s.router.Use(middleware.Compress(5))
+	s.router.Use(chiMiddleware.Compress(5))
 }
 
 // setupRoutes configures all routes
 func (s *Server) setupRoutes() {
+	// Create Telegram repository
+	telegramRepo := postgres.NewTelegramRepository(s.db)
+
+	// Create Telegram service (using simplified version for now)
+	telegramService := telegram.NewSimpleService(s.config, telegramRepo)
+
 	// Create handlers
-	h := handlers.New(s.config, s.db, s.redis)
+	h := handlers.New(s.config, s.db, s.redis, telegramService)
 
 	// Health check
 	s.router.Get("/health", h.Health)
@@ -162,7 +175,7 @@ func (s *Server) setupRoutes() {
 
 	// Profiling endpoints (if enabled)
 	if s.config.EnablePprof {
-		s.router.Mount("/debug", middleware.Profiler())
+		s.router.Mount("/debug", chiMiddleware.Profiler())
 	}
 
 	// Static files (for production builds)

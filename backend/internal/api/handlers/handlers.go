@@ -5,23 +5,26 @@ import (
 	"net/http"
 
 	"github.com/supercakecrumb/tg-analysis-tool/internal/config"
+	"github.com/supercakecrumb/tg-analysis-tool/internal/domain"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/infrastructure/postgres"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/infrastructure/redis"
 )
 
 // Handler holds all HTTP handlers
 type Handler struct {
-	config *config.Config
-	db     *postgres.DB
-	redis  *redis.Client
+	config          *config.Config
+	db              *postgres.DB
+	redis           *redis.Client
+	telegramService domain.TelegramService
 }
 
 // New creates a new handler instance
-func New(cfg *config.Config, db *postgres.DB, redis *redis.Client) *Handler {
+func New(cfg *config.Config, db *postgres.DB, redis *redis.Client, telegramService domain.TelegramService) *Handler {
 	return &Handler{
-		config: cfg,
-		db:     db,
-		redis:  redis,
+		config:          cfg,
+		db:              db,
+		redis:           redis,
+		telegramService: telegramService,
 	}
 }
 

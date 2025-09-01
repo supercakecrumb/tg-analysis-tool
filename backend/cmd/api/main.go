@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,8 +11,6 @@ import (
 	"time"
 
 	"github.com/joho/godotenv"
-	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/api"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/config"
 	"github.com/supercakecrumb/tg-analysis-tool/internal/infrastructure/postgres"
@@ -22,17 +21,27 @@ func main() {
 	// Load .env file in development
 	if err := godotenv.Load(); err != nil {
 		// It's okay if .env doesn't exist in production
-		log.Debug().Err(err).Msg("No .env file found")
+		slog.Debug("No .env file found", "error", err)
 	}
 
 	// Initialize logger
-	initLogger()
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: getLogLevel(),
+	}))
+	slog.SetDefault(logger)
 
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load configuration")
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
+
+	slog.Info("Application starting",
+		"version", "dev",
+		"environment", os.Getenv("ENV"),
+		"port", cfg.Port,
+	)
 
 	// Create application context
 	ctx := context.Background()
@@ -40,14 +49,16 @@ func main() {
 	// Initialize PostgreSQL
 	pgDB, err := postgres.New(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to PostgreSQL")
+		slog.Error("Failed to connect to PostgreSQL", "error", err)
+		os.Exit(1)
 	}
 	defer pgDB.Close()
 
 	// Initialize Redis
 	redisClient, err := redis.New(ctx, cfg.RedisURL)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to connect to Redis")
+		slog.Error("Failed to connect to Redis", "error", err)
+		os.Exit(1)
 	}
 	defer redisClient.Close()
 
@@ -65,9 +76,10 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		log.Info().Msgf("Starting server on port %d", cfg.Port)
+		slog.Info("Starting HTTP server", "port", cfg.Port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal().Err(err).Msg("Failed to start server")
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -76,40 +88,32 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Info().Msg("Shutting down server...")
+	slog.Info("Shutting down server...")
 
 	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(ctx); err != nil {
-		log.Fatal().Err(err).Msg("Server forced to shutdown")
+		slog.Error("Server forced to shutdown", "error", err)
+		os.Exit(1)
 	}
 
-	log.Info().Msg("Server exited")
+	slog.Info("Server exited gracefully")
 }
 
-func initLogger() {
-	// Configure zerolog
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-
-	// Set log level from environment
-	logLevel := os.Getenv("LOG_LEVEL")
-	switch logLevel {
+// getLogLevel returns the slog.Level based on environment variable
+func getLogLevel() slog.Level {
+	switch os.Getenv("LOG_LEVEL") {
 	case "debug":
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		return slog.LevelDebug
 	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		return slog.LevelInfo
 	case "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		return slog.LevelWarn
 	case "error":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		return slog.LevelError
 	default:
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	}
-
-	// Pretty logging for development
-	if os.Getenv("ENV") != "production" {
-		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+		return slog.LevelInfo
 	}
 }

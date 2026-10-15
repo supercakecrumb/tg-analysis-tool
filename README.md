@@ -149,3 +149,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 - [gotd/td](https://github.com/gotd/td) for the excellent MTProto implementation
 - [shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
 - The Telegram team for their comprehensive API
+
+## Authentication status
+
+Telegram login and verified server-side sessions are not implemented. Login endpoints now report HTTP 501 and protected API routes return HTTP 401 until real session issuance, verification, and per-user authorization are implemented. Do not expose profiling endpoints publicly.

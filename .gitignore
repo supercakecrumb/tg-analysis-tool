@@ -30,3 +30,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Generated executables and private runtime data
+/backend/api
+/backend/bin/api
+/backend/main

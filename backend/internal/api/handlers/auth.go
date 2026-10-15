@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
 	"net/http"
 	"time"
 )
@@ -20,13 +19,7 @@ type LoginQRResponse struct {
 
 // LoginQR initiates QR code login
 func (h *Handler) LoginQR(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement MTProto QR code generation
-	response := LoginQRResponse{
-		QRCode:    "data:image/png;base64,placeholder",
-		SessionID: "550e8400-e29b-41d4-a716-446655440000",
-		ExpiresAt: time.Now().Add(5 * time.Minute),
-	}
-	h.respondJSON(w, http.StatusOK, response)
+	h.respondError(w, http.StatusNotImplemented, "AUTH_UNAVAILABLE", "Telegram authentication is not implemented")
 }
 
 // LoginPhoneRequest represents the phone login request
@@ -43,19 +36,7 @@ type LoginPhoneResponse struct {
 
 // LoginPhone initiates phone number login
 func (h *Handler) LoginPhone(w http.ResponseWriter, r *http.Request) {
-	var req LoginPhoneRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
-		return
-	}
-
-	// TODO: Implement MTProto phone login
-	response := LoginPhoneResponse{
-		SessionID:  "550e8400-e29b-41d4-a716-446655440000",
-		CodeLength: 5,
-		CodeType:   "sms",
-	}
-	h.respondJSON(w, http.StatusOK, response)
+	h.respondError(w, http.StatusNotImplemented, "AUTH_UNAVAILABLE", "Telegram authentication is not implemented")
 }
 
 // LoginVerifyRequest represents the verification code request
@@ -81,24 +62,7 @@ type User struct {
 
 // LoginVerify verifies the authentication code
 func (h *Handler) LoginVerify(w http.ResponseWriter, r *http.Request) {
-	var req LoginVerifyRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
-		return
-	}
-
-	// TODO: Implement code verification
-	response := LoginVerifyResponse{
-		Status:      "success",
-		Requires2FA: false,
-		User: &User{
-			ID:        "user-uuid",
-			Phone:     "+1234567890",
-			FirstName: "John",
-			LastName:  "Doe",
-		},
-	}
-	h.respondJSON(w, http.StatusOK, response)
+	h.respondError(w, http.StatusNotImplemented, "AUTH_UNAVAILABLE", "Telegram authentication is not implemented")
 }
 
 // LoginPasswordRequest represents the 2FA password request
@@ -109,24 +73,7 @@ type LoginPasswordRequest struct {
 
 // LoginPassword submits 2FA password
 func (h *Handler) LoginPassword(w http.ResponseWriter, r *http.Request) {
-	var req LoginPasswordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.respondError(w, http.StatusBadRequest, "INVALID_REQUEST", "Invalid request body")
-		return
-	}
-
-	// TODO: Implement 2FA password verification
-	response := LoginVerifyResponse{
-		Status:      "success",
-		Requires2FA: false,
-		User: &User{
-			ID:        "user-uuid",
-			Phone:     "+1234567890",
-			FirstName: "John",
-			LastName:  "Doe",
-		},
-	}
-	h.respondJSON(w, http.StatusOK, response)
+	h.respondError(w, http.StatusNotImplemented, "AUTH_UNAVAILABLE", "Telegram authentication is not implemented")
 }
 
 // GetCurrentUser returns the current authenticated user
